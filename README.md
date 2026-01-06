@@ -120,15 +120,37 @@ python main.py ./documents ./extracted_text
 
 ### Interactive Configuration
 
-When executed, the script prompts for chunk size:
+When executed, the script prompts for output format:
+```
+Modalità output:
+  1) Slide separate (--- SLIDE N ---)
+  2) Blocchi di parole
+Scegli (1/2, default 1):
+```
+
+#### Mode 1: Slide-by-Slide (Default)
+Each PDF page becomes a separate section with header:
+```
+--- SLIDE 1 ---
+Content of first page...
+
+--- SLIDE 2 ---
+Content of second page...
+```
+Sections are separated by two newlines. Best for preserving document structure and reviewing individual slides.
+
+#### Mode 2: Word Chunks
+Prompts for chunk size:
 ```
 Quante parole per blocco? (default 100):
 ```
-
 - Press Enter for default (100 words per chunk)
 - Or specify custom size (e.g., 50, 200, 500)
+- All text is merged and divided into chunks of approximately N words
+- Chunks respect sentence boundaries and never split mid-sentence
+- Chunks are separated by five newlines (\n\n\n\n\n)
 
-Chunks respect sentence boundaries and never split mid-sentence.
+Best for continuous reading or feeding to language models with context window constraints.
 
 ## Output Structure
 
@@ -141,11 +163,35 @@ input_folder/
     └── document2.txt
 ```
 
+### Mode 1: Slide-by-Slide Output
 Each output file contains:
-- Cleaned and formatted text
+```
+--- SLIDE 1 ---
+First page content with native text + OCR additions
+
+--- SLIDE 2 ---
+Second page content with native text + OCR additions
+```
+- Each slide header indicates the page number
+- Sections separated by two newlines
+- OCR is applied page-by-page and merged intelligently with native text
+- Preserves document structure for easy navigation
+
+### Mode 2: Word Chunks Output
+Each output file contains:
+```
+First chunk with approximately N words from merged pages...
+
+
+
+
+Second chunk with approximately N words...
+```
+- All pages merged into continuous text
+- Divided into chunks of approximately N words (configurable)
 - Chunks separated by five newlines (\n\n\n\n\n)
-- Approximately N words per chunk (configurable)
 - Complete sentences only (no mid-sentence breaks)
+- OCR applied page-by-page before merging
 
 ## Algorithm Details
 
@@ -157,11 +203,12 @@ Each output file contains:
    - Fast but may miss scanned content
 
 2. **OCR Processing** (Tesseract)
-   - Converts pages to 300 DPI images
+   - Converts each page to 300 DPI image
    - Applies OCR with Italian language model
+   - Processed page-by-page in parallel with native extraction
    - Slower but captures all visible text
 
-3. **Intelligent Merging**
+3. **Intelligent Merging (Per Page)**
    ```
    For each page:
      if native_text is empty:
@@ -173,6 +220,8 @@ Each output file contains:
      else:
        merge native + unique OCR sentences
    ```
+   
+   This process happens **page-by-page** before any chunking or formatting, ensuring maximum text recovery from each individual page.
 
 4. **Text Cleaning**
    - Remove decorative Unicode characters
@@ -181,11 +230,9 @@ Each output file contains:
    - Normalize whitespace and punctuation
    - Preserve mathematical symbols (α β γ δ ε θ λ μ π σ τ φ ω Σ Δ Φ Ω ± × ÷ ≈ ≠ ≤ ≥ ∞ ∂ ∇ ∫ √)
 
-5. **Chunking**
-   - Split text into sentences
-   - Group sentences into chunks of ~N words
-   - Preserve sentence integrity
-   - Separate chunks with 5 newlines
+5. **Output Formatting** (User Choice)
+   - **Mode 1 (Slide)**: Keep pages separate with headers
+   - **Mode 2 (Chunks)**: Merge all pages, then split into word-count chunks respecting sentence boundaries
 
 ### Similarity Calculation
 
@@ -301,25 +348,30 @@ Adjust filtering parameters in `pulisci_testo_ocr()` and `is_frase_valida()` fun
 ### Core Functions
 
 - `pulisci_testo_ocr()`: Text cleaning and normalization
-- `estrai_testo_per_pagina_pdf()`: Native PDF text extraction
-- `estrai_testo_ocr_per_pagina()`: OCR processing
+- `estrai_testo_per_pagina_pdf()`: Native PDF text extraction (page-by-page)
+- `estrai_testo_ocr_per_pagina()`: OCR processing (page-by-page)
 - `calcola_similarita()`: Sequence matching for similarity scoring
-- `unisci_testo_pagina()`: Intelligent text merging logic
+- `unisci_testo_pagina()`: Intelligent text merging logic (per page)
 - `is_frase_valida()`: Sentence validation for STEM content
 - `trova_frasi_uniche()`: Unique sentence detection
-- `dividi_in_blocchi_con_frasi()`: Sentence-aware chunking
+- `dividi_per_slide()`: Format text with slide headers
+- `dividi_in_blocchi_con_frasi()`: Sentence-aware chunking by word count
 - `elabora_cartella()`: Main orchestration and batch processing
 
 ### Data Flow
 
 ```
-PDF Files → Native Extraction → Clean Text
-         → OCR Processing    → Clean Text
-                             → Similarity Comparison
-                             → Intelligent Merge
-                             → Sentence Chunking
-                             → Output TXT Files
+PDF Files → Native Extraction (page-by-page) → Clean Text per Page
+         → OCR Processing (page-by-page)    → Clean Text per Page
+                                             → Similarity Comparison per Page
+                                             → Intelligent Merge per Page
+                                             → User Choice:
+                                                ├─ Mode 1: Add Slide Headers
+                                                └─ Mode 2: Merge All + Chunk by Words
+                                             → Output TXT Files
 ```
+
+The key difference from traditional approaches: **OCR and merging happen at the page level**, ensuring each page gets optimal text extraction before any formatting decisions are made.
 
 ## Use Cases
 

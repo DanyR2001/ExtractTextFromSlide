@@ -251,8 +251,18 @@ def estrai_testo_completo_pdf(pdf_path):
         if testo_unito:
             testi_finali.append(testo_unito)
     
-    # Unisci tutte le pagine
-    return ' '.join(testi_finali)
+    # Restituisci lista di testi per pagina invece di unire tutto
+    return testi_finali
+
+def dividi_per_slide(testi_per_pagina):
+    """Organizza il testo slide per slide."""
+    testo_completo = []
+    
+    for i, testo_pagina in enumerate(testi_per_pagina, 1):
+        if testo_pagina.strip():
+            testo_completo.append(f"--- SLIDE {i} ---\n{testo_pagina}")
+    
+    return '\n\n'.join(testo_completo)
 
 def dividi_in_blocchi_con_frasi(testo, parole_per_blocco):
     """Divide il testo in blocchi rispettando i punti delle frasi."""
@@ -286,7 +296,7 @@ def dividi_in_blocchi_con_frasi(testo, parole_per_blocco):
     if blocco_corrente:
         blocchi.append(' '.join(blocco_corrente))
     
-    return '\n\n'.join(blocchi)
+    return '\n\n\n\n\n'.join(blocchi)
 
 def ordina_file_naturalmente(files):
     """Ordina i file in modo naturale (1, 2, 10 invece di 1, 10, 2)."""
@@ -316,19 +326,33 @@ def elabora_cartella(cartella, output_folder="output_txt"):
     
     print(f"Trovati {len(pdf_files)} file PDF (ordinati).\n")
     
+    # Scegli modalità di output
     while True:
-        try:
-            parole_input = input("Quante parole per blocco? (default 100): ").strip()
-            parole_per_blocco = int(parole_input) if parole_input else 100
-            
-            if parole_per_blocco <= 0:
-                print("Errore: inserisci un numero positivo.")
-                continue
-            
-            print(f"\nElaborazione con blocchi di ~{parole_per_blocco} parole (rispettando i periodi).\n")
+        modalita = input("Modalità output:\n  1) Slide separate (--- SLIDE N ---)\n  2) Blocchi di parole\nScegli (1/2, default 1): ").strip()
+        
+        if modalita == "" or modalita == "1":
+            usa_slide = True
+            parole_per_blocco = None
+            print("\nModalità: slide separate\n")
             break
-        except ValueError:
-            print("Errore: inserisci un numero valido.")
+        elif modalita == "2":
+            usa_slide = False
+            while True:
+                try:
+                    parole_input = input("Quante parole per blocco? (default 100): ").strip()
+                    parole_per_blocco = int(parole_input) if parole_input else 100
+                    
+                    if parole_per_blocco <= 0:
+                        print("Errore: inserisci un numero positivo.")
+                        continue
+                    
+                    print(f"\nModalità: blocchi di ~{parole_per_blocco} parole\n")
+                    break
+                except ValueError:
+                    print("Errore: inserisci un numero valido.")
+            break
+        else:
+            print("Errore: scegli 1 o 2.")
     
     statistiche = []
     
@@ -336,12 +360,22 @@ def elabora_cartella(cartella, output_folder="output_txt"):
         print(f"\n[{idx}/{len(pdf_files)}] {pdf_file.name}")
         print("="*70)
         
-        testo = estrai_testo_completo_pdf(pdf_file)
+        testi_per_pagina = estrai_testo_completo_pdf(pdf_file)
         
-        if testo.strip():
-            num_parole = len(testo.split())
-            testo_formattato = dividi_in_blocchi_con_frasi(testo, parole_per_blocco)
-            num_blocchi = len(testo_formattato.split('\n\n'))
+        if testi_per_pagina and len(testi_per_pagina) > 0:
+            if usa_slide:
+                # Modalità slide separate
+                testo_formattato = dividi_per_slide(testi_per_pagina)
+                num_parole = sum(len(t.split()) for t in testi_per_pagina)
+                num_unita = len(testi_per_pagina)
+                tipo_unita = "slide"
+            else:
+                # Modalità blocchi di parole
+                testo_unito = ' '.join(testi_per_pagina)
+                testo_formattato = dividi_in_blocchi_con_frasi(testo_unito, parole_per_blocco)
+                num_parole = len(testo_unito.split())
+                num_unita = len(testo_formattato.split('\n\n\n\n\n'))
+                tipo_unita = "blocchi"
             
             output_filename = pdf_file.stem + ".txt"
             output_filepath = output_path / output_filename
@@ -352,10 +386,11 @@ def elabora_cartella(cartella, output_folder="output_txt"):
             statistiche.append({
                 'nome': pdf_file.name,
                 'parole': num_parole,
-                'blocchi': num_blocchi
+                'unita': num_unita,
+                'tipo': tipo_unita
             })
             
-            print(f"  ✓ Salvato: {output_filename} ({num_parole:,} parole, {num_blocchi} blocchi)")
+            print(f"  ✓ Salvato: {output_filename} ({num_parole:,} parole, {num_unita} {tipo_unita})")
         else:
             print(f"  ✗ Nessun testo estratto")
     
@@ -364,13 +399,14 @@ def elabora_cartella(cartella, output_folder="output_txt"):
     print(f"{'='*70}")
     
     totale_parole = sum(s['parole'] for s in statistiche)
-    totale_blocchi = sum(s['blocchi'] for s in statistiche)
+    totale_unita = sum(s['unita'] for s in statistiche)
+    tipo_unita = statistiche[0]['tipo'] if statistiche else "unità"
     
     for stat in statistiche:
-        print(f"  {stat['nome']:<50} {stat['parole']:>8,} parole, {stat['blocchi']:>4} blocchi")
+        print(f"  {stat['nome']:<50} {stat['parole']:>8,} parole, {stat['unita']:>4} {stat['tipo']}")
     
     print(f"{'='*70}")
-    print(f"  {'TOTALE:':<50} {totale_parole:>8,} parole, {totale_blocchi:>4} blocchi")
+    print(f"  {'TOTALE:':<50} {totale_parole:>8,} parole, {totale_unita:>4} {tipo_unita}")
     print(f"{'='*70}")
     print(f"\n✓ File salvati in: {output_path}")
     print(f"✓ {len(statistiche)} file TXT creati")
